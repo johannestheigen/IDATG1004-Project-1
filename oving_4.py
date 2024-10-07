@@ -1,0 +1,105 @@
+#!/usr/bin/env pybricks-micropython
+from pybricks.hubs import EV3Brick
+from pybricks.ev3devices import Motor, ColorSensor, GyroSensor, TouchSensor
+from pybricks.parameters import Port, Stop
+from pybricks.robotics import DriveBase
+from pybricks.tools import wait
+
+class RallyRobot():
+    def __init__(self):
+        """
+        Initialize the RallyRobot with a DriveBase, 1 color sensor, 1 gyro sensor, and 1 touch sensor.
+        """
+        # Initialize EV3 brick and motors
+        self.ev3 = EV3Brick()
+        left_motor = Motor(Port.D)
+        right_motor = Motor(Port.A)
+
+        # Initialize the drive base with left and right motors
+        self.robot = DriveBase(left_motor, right_motor, wheel_diameter=56, axle_track=160)
+
+        # Initialize sensors
+        self.color_sensor = ColorSensor(Port.S1)
+        self.gyro_sensor = GyroSensor(Port.S3)
+        self.touch_sensor = TouchSensor(Port.S4)
+
+        # Set initial target angle for gyro (used for straight-line correction)
+        self.gyro_sensor.reset_angle(0)
+        self.target_angle = 0
+
+        # Set the measured thresholds based on your calibration
+        self.black_threshold = 70    # Black line reflection value
+        self.white_threshold = 50   # White surface reflection value
+
+        # Calculate target reflection value (midpoint between black and white)
+        self.target_reflection = (self.black_threshold + self.white_threshold) / 2
+
+        # State variable to track whether the robot is currently driving
+        self.driving = False  # Start with the robot stopped
+
+        # Proportional gain for steering control
+        self.proportional_gain = 3  # Start with a lower gain value and adjust as needed
+
+    def follow_line(self):
+        """
+        Follows the rally-path by using the color sensor and gyro sensor.
+        """
+        # Read the current reflection value from the color sensor
+        reflection = self.color_sensor.reflection()
+
+        # Calculate the error based on the target reflection value
+        error = reflection - self.target_reflection
+
+        # Print reflection and error values for debugging
+        print("Reflection: {}, Error: {}, Target: {}".format(reflection, error, self.target_reflection))
+
+        # Calculate turn rate based on the error
+        turn_rate = self.proportional_gain * error
+
+        # Disable gyro correction temporarily to simplify behavior
+        correction = 0
+
+        # Drive the robot with base speed and turn rate (without gyro correction)
+        base_speed = 100  # Use a lower base speed to observe behavior more clearly
+        self.robot.drive(base_speed, turn_rate - correction)
+
+    def toggle_driving(self):
+        """
+        Toggles the driving state of the robot between driving and stopped.
+        """
+        # Toggle the driving state
+        self.driving = not self.driving
+
+        if self.driving:
+            print("Starting to drive.")
+            self.ev3.speaker.beep()  # Play a sound to indicate starting
+        else:
+            # If driving is False, stop the robot
+            self.robot.stop(Stop.BRAKE)
+            print("Robot is stopped.")
+            self.ev3.speaker.beep()  # Play a sound to indicate stopping
+
+    def run(self):
+        """
+        Waits for the touch sensor to start or stop the robot.
+        """
+        print("Waiting for touch sensor press to start driving.")
+        while True:
+            # Wait for the touch sensor to be pressed
+            if self.touch_sensor.pressed():
+                wait(200)  # Debounce delay to avoid multiple toggles
+                self.toggle_driving()  # Toggle the driving state
+
+                # Wait for the touch sensor to be released before proceeding
+                while self.touch_sensor.pressed():
+                    wait(10)  # Short delay to wait for release
+
+            # If driving is enabled, follow the line
+            if self.driving:
+                self.follow_line()
+
+# Instantiate an object of the RallyRobot class
+rally_robot = RallyRobot()
+
+# Call the ‘run’ method to start the robot control logic
+rally_robot.run()
