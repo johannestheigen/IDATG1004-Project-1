@@ -4,102 +4,137 @@ from pybricks.ev3devices import Motor, ColorSensor, GyroSensor, TouchSensor
 from pybricks.parameters import Port, Stop
 from pybricks.robotics import DriveBase
 from pybricks.tools import wait
+import statistics
 
-class RallyRobot():
+class LineFollowerRobot:
     def __init__(self):
         """
-        Initialize the RallyRobot with a DriveBase, 1 color sensor, 1 gyro sensor, and 1 touch sensor.
+        Initializes the EV3 Line Follower Robot with motors, sensors, and a drive base.
         """
         # Initialize EV3 brick and motors
         self.ev3 = EV3Brick()
-        left_motor = Motor(Port.D)
-        right_motor = Motor(Port.A)
-
-        # Initialize the drive base with left and right motors
-        self.robot = DriveBase(left_motor, right_motor, wheel_diameter=56, axle_track=160)
-
-        # Initialize sensors
+        self.left_motor = Motor(Port.D)
+        self.right_motor = Motor(Port.A)
+        self.touch_sensor = TouchSensor(Port.S4)
         self.color_sensor = ColorSensor(Port.S1)
         self.gyro_sensor = GyroSensor(Port.S3)
-        self.touch_sensor = TouchSensor(Port.S4)
 
-        # Set initial target angle for gyro (used for straight-line correction)
-        self.gyro_sensor.reset_angle(0)
-        self.target_angle = 0
+        # Initialize drive base with motors
+        self.robot = DriveBase(self.left_motor, self.right_motor, wheel_diameter=56, axle_track=160)
 
-        # Set the measured thresholds based on your calibration
-        self.black_threshold = 70    # Black line reflection value
-        self.white_threshold = 50   # White surface reflection value
+        # initial values for black and white thresholds
+        self.black_threshold = None
+        self.white_threshold = None
+        self.lower_reflection_threshold = None
+        self.upper_reflection_threshold = None
 
-        # Calculate target reflection value (midpoint between black and white)
+        # initial gain and speed values
+        self.proportional_gain = 2.5
+        self.derivative_gain = 1.0
+        self.base_speed = 150
+
+        # Store the previous error for derivative control
+        self.previous_error = 0
+
+    def calibrate_sensors(self):
+        """
+        Calibrate the color sensor to determine the black and white thresholds.
+        """
+        self.ev3.screen.print("Calibration: Place on black, press touch sensor.")
+        while not self.touch_sensor.pressed():
+            wait(10)  # Wait until the touch sensor is pressed
+
+        # Take multiple samples of the black line reflection
+        black_values = [self.color_sensor.reflection() for _ in range(10)]
+        self.black_threshold = statistics.mean(black_values)
+        self.ev3.screen.print(f"Black threshold: {self.black_threshold}")
+        wait(1000)
+
+        self.ev3.screen.print("Place on white, press touch sensor.")
+        while not self.touch_sensor.pressed():
+            wait(10)
+
+        # multiple white samples
+        white_values = [self.color_sensor.reflection() for _ in range(10)]
+        self.white_threshold = statistics.mean(white_values)
+        self.ev3.screen.print(f"White threshold: {self.white_threshold}")
+        wait(1000)
+
+        # Define the lower and upper reflection range based on the calibrated values
+        self.lower_reflection_threshold = self.black_threshold - 5
+        self.upper_reflection_threshold = self.white_threshold + 5
+
+        # Calculate the target reflection value as the midpoint
         self.target_reflection = (self.black_threshold + self.white_threshold) / 2
-
-        # State variable to track whether the robot is currently driving
-        self.driving = False  # Start with the robot stopped
-
-        # Proportional gain for steering control
-        self.proportional_gain = 3  # Start with a lower gain value and adjust as needed
+        self.ev3.screen.print(f"Target reflection: {self.target_reflection}")
+        wait(1000)
 
     def follow_line(self):
         """
-        Follows the rally-path by using the color sensor and gyro sensor.
+        Follows the line using the color sensor and maintains a straight path with the gyro sensor.
         """
-        # Read the current reflection value from the color sensor
-        reflection = self.color_sensor.reflection()
+        # Reset the gyro sensor angle at the start
+        self.gyro_sensor.reset_angle(0)
+        target_angle = 0
 
-        # Calculate the error based on the target reflection value
-        error = reflection - self.target_reflection
+        while True:
+            # Get the current reflection and calculate error
+            reflection = self.color_sensor.reflection()
 
-        # Print reflection and error values for debugging
-        print("Reflection: {}, Error: {}, Target: {}".format(reflection, error, self.target_reflection))
+            # Determine if the reflection value falls within range
+            if reflection < self.lower_reflection_threshold or reflection > self.upper_reflection_threshold:
+                # If out of range, adjust robot's position aggressively to find the line
+                self.ev3.screen.print(f"Out of range! Reflection: {reflection}")
+                self.robot.drive(0, 100)  # Turn in place to find the line
+                continue  # Skip to the next loop iteration
 
-        # Calculate turn rate based on the error
-        turn_rate = self.proportional_gain * error
+            error = reflection - self.target_reflection
 
-        # Disable gyro correction temporarily to simplify behavior
-        correction = 0
+            # Calculate derivative (change in error)
+            derivative = error - self.previous_error
 
-        # Drive the robot with base speed and turn rate (without gyro correction)
-        base_speed = 100  # Use a lower base speed to observe behavior more clearly
-        self.robot.drive(base_speed, turn_rate - correction)
+            # Proportional-Derivative (PD) control
+            turn_rate = (self.proportional_gain * error) + (self.derivative_gain * derivative)
 
-    def toggle_driving(self):
-        """
-        Toggles the driving state of the robot between driving and stopped.
-        """
-        # Toggle the driving state
-        self.driving = not self.driving
+            # Get current gyro angle and apply correction
+            current_angle = self.gyro_sensor.angle()
+            angle_error = current_angle - target_angle
 
-        if self.driving:
-            print("Starting to drive.")
-            self.ev3.speaker.beep()  # Play a sound to indicate starting
-        else:
-            # If driving is False, stop the robot
-            self.robot.stop(Stop.BRAKE)
-            print("Robot is stopped.")
-            self.ev3.speaker.beep()  # Play a sound to indicate stopping
+            # Gyro correction factor to minimize drift
+            gyro_correction = angle_error * 2  # Adjust through trial and error
+
+            # Drive the robot with the calculated turn rate and gyro correction
+            self.robot.drive(self.base_speed, turn_rate - gyro_correction)
+
+            # Update previous error for the next loop
+            self.previous_error = error
+
+            # Stop the robot when the touch sensor is pressed
+            if self.touch_sensor.pressed():
+                self.robot.stop(Stop.BRAKE)
+                break
+
+            wait(10)
 
     def run(self):
         """
-        Waits for the touch sensor to start or stop the robot.
+        Waits for the touch sensor to start or stop the robot, and executes calibration.
         """
-        print("Waiting for touch sensor press to start driving.")
+        # Calibrate the sensors before starting
+        self.calibrate_sensors()
+
+        self.ev3.screen.print("Waiting for touch to start line following.")
         while True:
-            # Wait for the touch sensor to be pressed
+            # Wait for the touch sensor to start the line following routine
             if self.touch_sensor.pressed():
-                wait(200)  # Debounce delay to avoid multiple toggles
-                self.toggle_driving()  # Toggle the driving state
-
-                # Wait for the touch sensor to be released before proceeding
-                while self.touch_sensor.pressed():
-                    wait(10)  # Short delay to wait for release
-
-            # If driving is enabled, follow the line
-            if self.driving:
+                wait(500)  
                 self.follow_line()
+                self.ev3.screen.print("Line following stopped. Waiting for restart...")
+                wait(1000) 
+                self.ev3.screen.clear()
 
-# Instantiate an object of the RallyRobot class
-rally_robot = RallyRobot()
+            wait(100)  
 
-# Call the ‘run’ method to start the robot control logic
-rally_robot.run()
+
+robot = LineFollowerRobot()
+robot.run()
