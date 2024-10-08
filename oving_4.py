@@ -3,7 +3,7 @@ from pybricks.hubs import EV3Brick
 from pybricks.ev3devices import Motor, ColorSensor, GyroSensor, TouchSensor
 from pybricks.parameters import Port, Stop
 from pybricks.robotics import DriveBase
-from pybricks.tools import wait
+import pybricks.tools as pbts
 import statistics
 
 class LineFollowerRobot:
@@ -42,23 +42,23 @@ class LineFollowerRobot:
         """
         self.ev3.screen.print("Calibration: Place on black, press touch sensor.")
         while not self.touch_sensor.pressed():
-            wait(10)  # Wait until the touch sensor is pressed
+            pbts.wait(10)  # Wait until the touch sensor is pressed
 
         # Take multiple samples of the black line reflection
         black_values = [self.color_sensor.reflection() for _ in range(10)]
         self.black_threshold = statistics.mean(black_values)
         self.ev3.screen.print(f"Black threshold: {self.black_threshold}")
-        wait(1000)
+        pbts.wait(1000)
 
         self.ev3.screen.print("Place on white, press touch sensor.")
         while not self.touch_sensor.pressed():
-            wait(10)
+            pbts.wait(10)
 
         # Multiple white samples
         white_values = [self.color_sensor.reflection() for _ in range(10)]
         self.white_threshold = statistics.mean(white_values)
         self.ev3.screen.print(f"White threshold: {self.white_threshold}")
-        wait(1000)
+        pbts.wait(1000)
 
         # Define the lower and upper reflection range based on the calibrated values
         self.lower_reflection_threshold = self.black_threshold - 5
@@ -67,7 +67,7 @@ class LineFollowerRobot:
         # Calculate the target reflection value as the midpoint
         self.target_reflection = (self.black_threshold + self.white_threshold) / 2
         self.ev3.screen.print(f"Target reflection: {self.target_reflection}")
-        wait(1000)
+        pbts.wait(1000)
 
     def follow_line(self):
         """
@@ -114,7 +114,7 @@ class LineFollowerRobot:
                 self.robot.stop(Stop.BRAKE)
                 break
 
-            wait(10)
+            pbts.wait(10)
 
     def run(self):
         """
@@ -127,13 +127,13 @@ class LineFollowerRobot:
         while True:
             # Wait for the touch sensor to start the line following routine
             if self.touch_sensor.pressed():
-                wait(500)  
+                pbts.wait(500)  
                 self.follow_line()
-                self.ev3.screen.print("Line following stopped. Waiting for restart...")
-                wait(1000) 
+                self.ev3.screen.print("Line following stopped. waiting for restart...")
+                pbts.wait(1000) 
                 self.ev3.screen.clear()
 
-            wait(100)  
+            pbts.wait(100)  
 
 
 robot = LineFollowerRobot()
