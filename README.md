@@ -17,4 +17,3 @@ To contribute to the project, please follow the tutorial below to learn how to c
 
 [Cloning a Repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
 
-## This is a test to see if I can fetch the remote repository to my local machine without hurting the source code.
