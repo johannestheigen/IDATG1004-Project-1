@@ -22,13 +22,13 @@ class LineFollowerRobot:
         # Initialize drive base with motors
         self.robot = DriveBase(self.left_motor, self.right_motor, wheel_diameter=56, axle_track=160)
 
-        # initial values for black and white thresholds
+        # Initial values for black and white thresholds
         self.black_threshold = None
         self.white_threshold = None
         self.lower_reflection_threshold = None
         self.upper_reflection_threshold = None
 
-        # initial gain and speed values
+        # Initial gain and speed values
         self.proportional_gain = 2.5
         self.derivative_gain = 1.0
         self.base_speed = 150
@@ -54,7 +54,7 @@ class LineFollowerRobot:
         while not self.touch_sensor.pressed():
             wait(10)
 
-        # multiple white samples
+        # Multiple white samples
         white_values = [self.color_sensor.reflection() for _ in range(10)]
         self.white_threshold = statistics.mean(white_values)
         self.ev3.screen.print(f"White threshold: {self.white_threshold}")
